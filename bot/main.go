@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/Fosterist/claude-anywhere/internal/api"
@@ -20,6 +22,8 @@ import (
 )
 
 func main() {
+	godotenv.Load()
+
 	token := mustEnv("TELEGRAM_TOKEN")
 	agentToken := mustEnv("AGENT_TOKEN")
 	adminChatID, err := strconv.ParseInt(mustEnv("ADMIN_CHAT_ID"), 10, 64)

@@ -30,9 +30,10 @@ Requires the standalone [Claude Code CLI](https://code.claude.com/docs/en/setup)
 
 ```bash
 cp projects.example.json projects.json   # edit with your real project paths
+cp .env.example .env                      # edit with your real token/secret
 ```
 
-Both `bot` and `agent` read their config from environment variables:
+Both `bot` and `agent` read their config from environment variables (loaded from `.env` if present):
 
 | Component | Variable | Purpose |
 |---|---|---|

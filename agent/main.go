@@ -13,11 +13,15 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/Fosterist/claude-anywhere/internal/api"
 	"github.com/Fosterist/claude-anywhere/internal/config"
 )
 
 func main() {
+	godotenv.Load()
+
 	botURL := mustEnv("BOT_URL")
 	agentToken := mustEnv("AGENT_TOKEN")
 	configPath := envOr("CONFIG_PATH", "projects.json")
