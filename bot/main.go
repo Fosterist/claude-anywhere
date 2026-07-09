@@ -14,6 +14,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/dustin/go-humanize"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/Fosterist/claude-anywhere/internal/api"
@@ -129,7 +130,12 @@ func (s *server) handleResult(w http.ResponseWriter, r *http.Request) {
 	if res.IsError {
 		text = "⚠️ Ошибка выполнения: " + res.ErrorText
 	}
-	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s\n\n💵 $%.4f", text, res.CostUSD))
+	totalTokens := res.InputTokens + res.OutputTokens + res.CacheCreationTokens
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf(
+		"%s\n\n💵 $%.4f · 🔤 %s токенов (вход %s, выход %s, кэш-чтение %s)",
+		text, res.CostUSD,
+		humanCount(totalTokens), humanCount(res.InputTokens), humanCount(res.OutputTokens), humanCount(res.CacheReadTokens),
+	))
 	if _, err := s.bot.Send(msg); err != nil {
 		log.Printf("send result to chat %d: %v", chatID, err)
 	}
@@ -261,13 +267,15 @@ func (h *tgHandler) sendOfflinePicker(chatID int64) {
 
 func (h *tgHandler) sendStatus(chatID int64) {
 	state, _ := h.st.GetChatState(chatID)
-	cost, count, _ := h.st.RecentCost(chatID, 5*time.Hour)
+	cost, count, tokens, _ := h.st.RecentCost(chatID, 5*time.Hour)
 	text := fmt.Sprintf(
-		"Проект: %s\nРежим: %s\nПри офлайне: %s\n\nЗа последние 5 часов: %d запросов, $%.4f",
-		orDash(state.CurrentProject), orDash(state.Mode), orDash(state.OfflineBehavior), count, cost,
+		"Проект: %s\nРежим: %s\nПри офлайне: %s\n\nЗа последние 5 часов: %d запросов, $%.4f, %s токенов",
+		orDash(state.CurrentProject), orDash(state.Mode), orDash(state.OfflineBehavior), count, cost, humanCount(tokens),
 	)
 	h.send(chatID, text)
 }
+
+func humanCount(n int64) string { return humanize.Comma(n) }
 
 func orDash(s string) string {
 	if s == "" {

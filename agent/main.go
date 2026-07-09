@@ -96,11 +96,17 @@ func postResult(client *http.Client, botURL, token string, res api.Result) error
 
 // claudeResult mirrors the fields we care about from `claude --output-format json`.
 type claudeResult struct {
-	Result      string  `json:"result"`
-	SessionID   string  `json:"session_id"`
+	Result       string  `json:"result"`
+	SessionID    string  `json:"session_id"`
 	TotalCostUSD float64 `json:"total_cost_usd"`
-	IsError     bool    `json:"is_error"`
-	Subtype     string  `json:"subtype"`
+	IsError      bool    `json:"is_error"`
+	Subtype      string  `json:"subtype"`
+	Usage        struct {
+		InputTokens         int64 `json:"input_tokens"`
+		OutputTokens        int64 `json:"output_tokens"`
+		CacheReadTokens     int64 `json:"cache_read_input_tokens"`
+		CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
+	} `json:"usage"`
 }
 
 func runJob(claudeBin string, cfg *config.Config, job api.Job) api.Result {
@@ -144,12 +150,16 @@ func runJob(claudeBin string, cfg *config.Config, job api.Job) api.Result {
 	}
 
 	return api.Result{
-		JobID:     job.ID,
-		Result:    cr.Result,
-		SessionID: cr.SessionID,
-		CostUSD:   cr.TotalCostUSD,
-		IsError:   cr.IsError,
-		ErrorText: cr.Subtype,
+		JobID:               job.ID,
+		Result:              cr.Result,
+		SessionID:           cr.SessionID,
+		CostUSD:             cr.TotalCostUSD,
+		IsError:             cr.IsError,
+		ErrorText:           cr.Subtype,
+		InputTokens:         cr.Usage.InputTokens,
+		OutputTokens:        cr.Usage.OutputTokens,
+		CacheReadTokens:     cr.Usage.CacheReadTokens,
+		CacheCreationTokens: cr.Usage.CacheCreationTokens,
 	}
 }
 

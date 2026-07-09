@@ -16,10 +16,18 @@ type Job struct {
 
 // Result is what the agent reports back after running a job.
 type Result struct {
-	JobID      int64   `json:"job_id"`
-	Result     string  `json:"result"`
-	SessionID  string  `json:"session_id"`
-	CostUSD    float64 `json:"cost_usd"`
-	IsError    bool    `json:"is_error"`
-	ErrorText  string  `json:"error_text,omitempty"`
+	JobID     int64   `json:"job_id"`
+	Result    string  `json:"result"`
+	SessionID string  `json:"session_id"`
+	CostUSD   float64 `json:"cost_usd"`
+	IsError   bool    `json:"is_error"`
+	ErrorText string  `json:"error_text,omitempty"`
+
+	// Token usage from claude's own JSON output — the input/output split
+	// plus prompt-cache read/write, since cache-read tokens are ~10x cheaper
+	// and skew a raw token sum if not tracked separately.
+	InputTokens         int64 `json:"input_tokens"`
+	OutputTokens        int64 `json:"output_tokens"`
+	CacheReadTokens     int64 `json:"cache_read_tokens"`
+	CacheCreationTokens int64 `json:"cache_creation_tokens"`
 }

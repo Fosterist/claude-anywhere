@@ -40,6 +40,10 @@ func (s *Store) migrate() error {
 		status TEXT NOT NULL DEFAULT 'pending',
 		result TEXT,
 		cost_usd REAL,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		cache_read_tokens INTEGER,
+		cache_creation_tokens INTEGER,
 		error_text TEXT,
 		created_at INTEGER NOT NULL,
 		completed_at INTEGER
@@ -126,9 +130,13 @@ func (s *Store) Complete(res api.Result) (chatID int64, err error) {
 	}
 
 	_, err = s.db.Exec(
-		`UPDATE jobs SET status = ?, result = ?, cost_usd = ?, error_text = ?, completed_at = ?
+		`UPDATE jobs SET status = ?, result = ?, cost_usd = ?,
+		 input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_creation_tokens = ?,
+		 error_text = ?, completed_at = ?
 		 WHERE id = ?`,
-		status, res.Result, res.CostUSD, res.ErrorText, time.Now().Unix(), res.JobID,
+		status, res.Result, res.CostUSD,
+		res.InputTokens, res.OutputTokens, res.CacheReadTokens, res.CacheCreationTokens,
+		res.ErrorText, time.Now().Unix(), res.JobID,
 	)
 	if err != nil {
 		return chatID, fmt.Errorf("complete: %w", err)
@@ -154,16 +162,17 @@ func (s *Store) LastSession(chatID int64, project string) (string, error) {
 	return sessionID, err
 }
 
-// RecentCost sums cost_usd for jobs completed within the given window —
-// the empirical stand-in for a real rate-limit quota.
-func (s *Store) RecentCost(chatID int64, window time.Duration) (totalUSD float64, count int, err error) {
+// RecentCost sums cost and tokens for jobs completed within the given
+// window — the empirical stand-in for a real rate-limit quota.
+func (s *Store) RecentCost(chatID int64, window time.Duration) (totalUSD float64, count int, totalTokens int64, err error) {
 	since := time.Now().Add(-window).Unix()
 	row := s.db.QueryRow(
-		`SELECT COALESCE(SUM(cost_usd), 0), COUNT(*) FROM jobs
-		 WHERE chat_id = ? AND completed_at >= ? AND status = 'done'`,
+		`SELECT COALESCE(SUM(cost_usd), 0), COUNT(*),
+		 COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens), 0)
+		 FROM jobs WHERE chat_id = ? AND completed_at >= ? AND status = 'done'`,
 		chatID, since,
 	)
-	err = row.Scan(&totalUSD, &count)
+	err = row.Scan(&totalUSD, &count, &totalTokens)
 	return
 }
 
