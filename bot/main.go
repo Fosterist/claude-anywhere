@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -51,12 +52,37 @@ func main() {
 	}
 	log.Printf("authorized as @%s", bot.Self.UserName)
 
-	srv := &server{st: st, agentToken: agentToken, bot: bot}
+	live := &liveness{}
+	srv := &server{st: st, agentToken: agentToken, bot: bot, live: live}
 	go srv.listenHTTP(httpAddr)
 
-	tg := &tgHandler{bot: bot, st: st, cfg: cfg, adminChatID: adminChatID}
+	tg := &tgHandler{bot: bot, st: st, cfg: cfg, adminChatID: adminChatID, live: live}
 	tg.run()
 }
+
+// liveness tracks the last time the agent polled for work, so the bot can
+// tell whether it's likely online without a dedicated heartbeat endpoint —
+// every /jobs/next hit already proves the agent is alive.
+type liveness struct {
+	mu       sync.Mutex
+	lastPoll time.Time
+}
+
+func (l *liveness) touch() {
+	l.mu.Lock()
+	l.lastPoll = time.Now()
+	l.mu.Unlock()
+}
+
+func (l *liveness) online(threshold time.Duration) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return !l.lastPoll.IsZero() && time.Since(l.lastPoll) <= threshold
+}
+
+// agentOfflineThreshold is a few multiples of the agent's poll interval
+// (3s), so normal jitter doesn't false-positive as "offline".
+const agentOfflineThreshold = 15 * time.Second
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)
@@ -79,6 +105,7 @@ type server struct {
 	st         *store.Store
 	agentToken string
 	bot        *tgbotapi.BotAPI
+	live       *liveness
 }
 
 func (s *server) listenHTTP(addr string) {
@@ -102,6 +129,7 @@ func (s *server) authed(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *server) handleNext(w http.ResponseWriter, r *http.Request) {
+	s.live.touch()
 	job, err := s.st.ClaimNext()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -139,6 +167,20 @@ func (s *server) handleResult(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.bot.Send(msg); err != nil {
 		log.Printf("send result to chat %d: %v", chatID, err)
 	}
+
+	if state, err := s.st.GetChatState(chatID); err == nil && state.Mode == "confirm" {
+		if heldID, _ := s.st.NextHeld(chatID); heldID != 0 {
+			count, _ := s.st.CountHeld(chatID)
+			cm := tgbotapi.NewMessage(chatID, "Готово. В очереди ещё есть промт — продолжить?")
+			cm.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+				tgbotapi.NewInlineKeyboardRow(
+					tgbotapi.NewInlineKeyboardButtonData(
+						fmt.Sprintf("▶️ Продолжить (ещё %d)", count), fmt.Sprintf("continue:%d", heldID)),
+				),
+			)
+			s.bot.Send(cm)
+		}
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -149,6 +191,7 @@ type tgHandler struct {
 	st          *store.Store
 	cfg         *config.Config
 	adminChatID int64
+	live        *liveness
 }
 
 func (h *tgHandler) run() {
@@ -200,12 +243,28 @@ func (h *tgHandler) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	jobID, err := h.st.Enqueue(chatID, state.CurrentProject, msg.Text, "acceptEdits", 0)
+	status := "pending"
+	if state.Mode == "confirm" {
+		if active, _ := h.st.HasActiveJob(chatID); active {
+			status = "held"
+		}
+	}
+
+	jobID, err := h.st.Enqueue(chatID, state.CurrentProject, msg.Text, "acceptEdits", 0, status)
 	if err != nil {
 		h.send(chatID, "Не получилось поставить в очередь: "+err.Error())
 		return
 	}
-	h.send(chatID, fmt.Sprintf("📥 В очереди (задание #%d, проект: %s)", jobID, state.CurrentProject))
+
+	label := "📥 В очереди"
+	if status == "held" {
+		label = "⏸ Ждёт своей очереди (пошаговый режим — сначала завершится текущее)"
+	}
+	text := fmt.Sprintf("%s (задание #%d, проект: %s)", label, jobID, state.CurrentProject)
+	if state.OfflineBehavior == "notify" && !h.live.online(agentOfflineThreshold) {
+		text += "\n⚠️ Агент на ПК сейчас не отвечает — выполнится, как только ПК будет на связи."
+	}
+	h.send(chatID, text)
 }
 
 func (h *tgHandler) handleCallback(cb *tgbotapi.CallbackQuery) {
@@ -228,6 +287,16 @@ func (h *tgHandler) handleCallback(cb *tgbotapi.CallbackQuery) {
 		behavior := cb.Data[8:]
 		h.st.SetOfflineBehavior(chatID, behavior)
 		h.send(chatID, "✅ При офлайне ПК: "+behavior)
+	case len(cb.Data) > 9 && cb.Data[:9] == "continue:":
+		id, err := strconv.ParseInt(cb.Data[9:], 10, 64)
+		if err != nil {
+			return
+		}
+		if err := h.st.Release(chatID, id); err != nil {
+			h.send(chatID, "Не получилось продолжить: "+err.Error())
+			return
+		}
+		h.send(chatID, "▶️ Запускаю следующее")
 	}
 }
 
