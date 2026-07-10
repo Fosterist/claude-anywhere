@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,11 +17,16 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/Fosterist/claude-anywhere/internal/api"
+	"github.com/Fosterist/claude-anywhere/internal/applog"
 	"github.com/Fosterist/claude-anywhere/internal/config"
 )
 
 func main() {
+	logFile := flag.String("logfile", "", "path to log file (default: stderr, or $LOG_FILE)")
+	flag.Parse()
+
 	godotenv.Load()
+	defer applog.Setup(*logFile)()
 
 	botURL := mustEnv("BOT_URL")
 	agentToken := mustEnv("AGENT_TOKEN")

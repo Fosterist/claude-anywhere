@@ -70,6 +70,20 @@ go run ./agent   # on the machine that has your projects checked out
 
 > If bot and agent run on the same machine, use `127.0.0.1` in `BOT_URL`, not `localhost` — on some Windows setups (VPN adapters especially) IPv6 loopback (what `localhost` resolves to first) is blocked while IPv4 works fine.
 
+## Run automatically at login (Windows)
+
+By default `go run ./bot` / `go run ./agent` only run in the foreground of whatever terminal started them — close the window, they stop. To have both start automatically every time you log into Windows, with no visible console window:
+
+```powershell
+.\scripts\install-autostart.ps1
+```
+
+This builds `bot.exe`/`agent.exe` as windowless binaries, redirects their logs to `bot.log`/`agent.log` (there's no console to print to otherwise), and registers two Scheduled Tasks that restart automatically if either process crashes. Re-run it any time you want to pick up a new build. To remove:
+
+```powershell
+.\scripts\uninstall-autostart.ps1
+```
+
 ## Security note
 
 This gives a Telegram chat the ability to run Claude Code — including file edits and shell commands — against real projects on your machine. `ADMIN_CHAT_ID` restricts it to a single chat; there's no other access control. Don't point it at anything you wouldn't trust yourself to type into a terminal.

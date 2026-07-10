@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,12 +20,17 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/Fosterist/claude-anywhere/internal/api"
+	"github.com/Fosterist/claude-anywhere/internal/applog"
 	"github.com/Fosterist/claude-anywhere/internal/config"
 	"github.com/Fosterist/claude-anywhere/internal/store"
 )
 
 func main() {
+	logFile := flag.String("logfile", "", "path to log file (default: stderr, or $LOG_FILE)")
+	flag.Parse()
+
 	godotenv.Load()
+	defer applog.Setup(*logFile)()
 
 	token := mustEnv("TELEGRAM_TOKEN")
 	agentToken := mustEnv("AGENT_TOKEN")
