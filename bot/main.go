@@ -52,6 +52,16 @@ func main() {
 	}
 	log.Printf("authorized as @%s", bot.Self.UserName)
 
+	commands := tgbotapi.NewSetMyCommands(
+		tgbotapi.BotCommand{Command: "projects", Description: "Выбрать проект"},
+		tgbotapi.BotCommand{Command: "mode", Description: "Режим очереди: автономно / пошагово"},
+		tgbotapi.BotCommand{Command: "offline", Description: "Поведение при офлайне ПК"},
+		tgbotapi.BotCommand{Command: "status", Description: "Текущие настройки и расход за 5 часов"},
+	)
+	if _, err := bot.Request(commands); err != nil {
+		log.Printf("set commands: %v", err)
+	}
+
 	live := &liveness{}
 	srv := &server{st: st, agentToken: agentToken, bot: bot, live: live}
 	go srv.listenHTTP(httpAddr)
@@ -221,7 +231,12 @@ func (h *tgHandler) handleMessage(msg *tgbotapi.Message) {
 
 	switch {
 	case msg.Command() == "start":
-		h.send(chatID, "👋 Готов. /projects — выбрать проект, потом просто пишите промт.")
+		h.send(chatID, "👋 Готов.\n\n"+
+			"/projects — выбрать проект\n"+
+			"/mode — автономно / пошагово\n"+
+			"/offline — поведение при офлайне ПК\n"+
+			"/status — текущие настройки и расход\n\n"+
+			"После выбора проекта — просто пишите промт обычным сообщением.")
 		return
 	case msg.Command() == "projects":
 		h.sendProjectPicker(chatID)
