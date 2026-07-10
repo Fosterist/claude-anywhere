@@ -18,11 +18,29 @@ The bot never executes anything itself — it only queues prompts and relays res
 
 - **Projects** are just named directories (`projects.json`) — pick one in Telegram, the agent runs there.
 - **Series of prompts** resume the same Claude session via `--resume`, so context carries over between messages.
-- **Cost tracking** is empirical: every response includes `total_cost_usd` from Claude Code's own JSON output, summed over a rolling window, since there's no API to query remaining Pro/Max plan quota directly.
+- **Two queue modes**: autonomous (every prompt runs as soon as the previous one finishes) or step-by-step (`/mode`) — the next queued prompt waits for you to tap "Continue" after each result.
+- **Cost + token tracking** is empirical: every response includes `total_cost_usd` and a token breakdown (input/output/cache) from Claude Code's own JSON output, summed over a rolling 5-hour window (`/status`) — there's no API to query remaining Pro/Max plan quota directly, so this is the closest available proxy.
+- **Offline detection** (`/offline`): if the agent hasn't polled in a while, the bot can warn you immediately instead of letting the prompt sit in the queue silently.
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `/projects` | Pick which project directory the next prompts run against |
+| `/mode` | Autonomous vs. step-by-step queue execution |
+| `/offline` | What to do when the agent looks offline: queue silently, or warn immediately |
+| `/status` | Current settings + cost/token usage over the last 5 hours |
 
 ## Status
 
-Early / work in progress — built in the open, not production-hardened yet.
+Core loop works end to end and is what I'm using day to day, but it's young:
+
+- ✅ Telegram → queue → agent → `claude -p` → result, with token/cost reporting
+- ✅ Step-by-step vs. autonomous mode, offline-agent warning
+- ⚠️ No tests yet
+- ⚠️ No service/autostart setup documented — you run `bot`/`agent` in a terminal and keep it open
+- ⚠️ Permission mode is hardcoded to `acceptEdits` (auto-approves file edits, not arbitrary bash) — not yet configurable from Telegram
+- ⚠️ Single-user by design (`ADMIN_CHAT_ID`) — not built for multiple people sharing one bot
 
 ## Setup
 
@@ -49,6 +67,8 @@ Both `bot` and `agent` read their config from environment variables (loaded from
 go run ./bot     # on the machine that should own the Telegram side
 go run ./agent   # on the machine that has your projects checked out
 ```
+
+> If bot and agent run on the same machine, use `127.0.0.1` in `BOT_URL`, not `localhost` — on some Windows setups (VPN adapters especially) IPv6 loopback (what `localhost` resolves to first) is blocked while IPv4 works fine.
 
 ## Security note
 
